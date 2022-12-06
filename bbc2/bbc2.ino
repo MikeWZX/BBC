@@ -5,7 +5,7 @@
 Servo servoA, servoB, servoC;
 
 // PID variables
-double Kp = 10, Kd = 0.00001, Ki = 0.001;          // PID constants
+double Kp = 10.5, Kd = 0.00001, Ki = 0.001;          // PID constants
 unsigned long currTime, prevTime;
 double elapTime;
 double errorX, lastErrorX, cumuErrorX, rateErrorX;
