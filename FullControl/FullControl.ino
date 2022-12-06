@@ -2,10 +2,11 @@
 #include <Servo.h>
 #include <stdio.h>
 #define BAUDRATE 115200
+#define CLOCK_FREQUENCY 16000000
 //Motor Pins
-#define motorpin_1
-#define motorpin_2
-#define motorpin_3
+#define MOTORPIN1
+#define MOTORPIN2
+#define MOTORPIN3 
 
 //Control Variables
 #define KPx 0.001
@@ -23,7 +24,7 @@
 #define beta1 0
 #define beta2 2*M_PI/3
 #define beta3 4*M_PI/3
-float T = sqrt(S * S - A*A);
+float T = sqrt(S*S - A*A);
 float beta[3] = {beta1, beta2, beta3};
 float Kp[2] = {KPx, KPy};
 float Kd[2] = {KDx, KDy};
@@ -43,35 +44,65 @@ float alpha[3] = {0, 0, 0};
 volatile float x_coor = 0;
 volatile float y_coor = 0;
 const byte numChars = 32;
-volatile char tempChars[numChars];
-
-//============= setup and loop
-void setup() {
-  // put your setup code here, to run once:
-
-}
-
-void loop() {
-  // put your main code here, to run repeatedly:
-
-}
-
+volatile char tempChars[numChars];    // temporary array for use when parsing
+volatile char receivedChars[numChars]; 
+volatile boolean newData = false;
+int controlLoopRate = 95; //frequency in Hz
 
 //============= ISR Functions
+// Timer Setup: frequency needs to be larger than 1 HZ
+void setupTimer(int freq){
+  // set up Timer
+  noInterrupts(); // stop interrupts
+  
+  TCCR1A = 0; // set entire TCCR1A register to 0
+  TCCR1B = 0; // same for TCCR1B
+  TCNT1  = 0; // initialize counter value to 0
+  
+  // freq: 1~3
+  if(freq <= 3){ 
+    // set compare match register for freq(<=3) Hz increments
+    OCR1A = CLOCK_FREQUENCY/(256*freq)-1; 
+    // Set CS12, CS11 and CS10 bits for 256 prescaler
+    TCCR1B |= (1 << CS12) | (0 << CS11) | (0 << CS10);
+  }
+  // freq: 4~30
+  else if(freq <= 30){ 
+    // set compare match register for freq(<=30) Hz increments
+    OCR1A = CLOCK_FREQUENCY/(64*freq)-1; 
+    // Set CS12, CS11 and CS10 bits for 64 prescaler
+    TCCR1B |= (0 << CS12) | (1 << CS11) | (1 << CS10);
+  }
 
-void parseData() {      // split the data into its parts
+  // freq: 31~244
+  else if(freq <= 244){ 
+    // set compare match register for freq(<=30) Hz increments
+    OCR1A = CLOCK_FREQUENCY/(8*freq)-1; 
+    // Set CS12, CS11 and CS10 bits for 8 prescaler
+    TCCR1B |= (0 << CS12) | (1 << CS11) | (0 << CS10);
+  }
 
-  char * strtokIndx; // this is used by strtok() as an index
+  // freq: >=245
+  else{ 
+    // set compare match register for freq(<=30) Hz increments
+    OCR1A = CLOCK_FREQUENCY/(1*freq)-1; 
+    // Set CS12, CS11 and CS10 bits for 1 prescaler
+    TCCR1B |= (0 << CS12) | (0 << CS11) | (1 << CS10);
+  }
 
-  strtokIndx = strtok(tempChars, ",");     // get the first part - the string
-  x_coor = atof(strtokIndx); // convert msg part to float x_coor
-
-  strtokIndx = strtok(NULL, ","); // this continues where the previous call left off
-  y_coor = atof(strtokIndx);     // convert this part to an float y_coor
-
-
+  // turn on CTC mode
+  TCCR1B |= (1 << WGM12);
+  // enable timer compare interrupt
+  TIMSK1 |= (1 << OCIE1A);
+  
+  interrupts(); // allow interrupts
 }
 
+ISR(TIMER1_COMPA_vect) {
+  //grab the current x and y position and push previous onto 
+  //read check pyserial, update to new xy coordinate, push old to new array, compute PID
+}
+  
 //============= PID Calculation function
 void PID() {
   
@@ -121,6 +152,7 @@ void find_next_alpha() {
   float B[3][3] = {{R_base * cos(beta[0]), R_base * cos(beta[1]), R_base * cos(beta[2])},
     {R_base * sin(beta[0]), R_base * sin(beta[1]), R_base * sin(beta[2])},
     {0, 0, 0}};
+    
   float l[3][3];
   
   for (int i = 0; i <= 2; i= i+1) { //calculate l
@@ -128,6 +160,7 @@ void find_next_alpha() {
       l[i][j] = target_q[i][j] - B[i][j];
     }
   }
+
   
   for (int i = 0; i <= 2; i= i+1) { //for loop to calculate alpha 1-3
     float l_norm = sqrt(l[0][i] * l[0][i] + l[1][i] * l[1][i] + l[2][i] * l[2][i]);
@@ -139,6 +172,71 @@ void find_next_alpha() {
     float Ni = 2 * A * cos(beta[i]) * xi + sin(beta[i]) * yi;
     alpha[i] = asin(Li / sqrt(Mi * Mi + Ni * Ni) - atan2(Ni, Mi));
   }
+}
+
+//============= Read and Parse data
+//Reading serial data
+void recvWithStartEndMarkers() {
+    static boolean recvInProgress = false;
+    static byte ndx = 0;
+    char startMarker = '<';
+    char endMarker = '>';
+    char rc;
+
+    if (Serial.available() > 0 && newData == false) {
+        rc = Serial.read();
+
+        if (recvInProgress == true) {
+            if (rc != endMarker) {
+                receivedChars[ndx] = rc;
+                ndx++;
+                if (ndx >= numChars) {
+                    ndx = numChars - 1;
+                }
+            }
+            else {
+                receivedChars[ndx] = '\0'; // terminate the string
+                recvInProgress = false;
+                ndx = 0;
+                newData = true;
+            }
+        }
+
+        else if (rc == startMarker) {
+            recvInProgress = true;
+        }
+    }
+}
+//Parsing data
+void readParseData() {      // split the data into its parts NEEDS TO UPDATE
+
+  char * strtokIndx; // this is used by strtok() as an index
+
+  strtokIndx = strtok(tempChars, ",");     // get the first part - the string
+  x_coor = atof(strtokIndx); // convert msg part to float x_coor
+
+  strtokIndx = strtok(NULL, ","); // this continues where the previous call left off
+  y_coor = atof(strtokIndx);     // convert this part to an float y_coor
+}
+
+//============= setup and loop
+void setup() {
+  // put your setup code here, to run once:
+  Serial.begin(BAUDRATE);
+  setupTimer(controlLoopRate);
+  // pin mode for motors
+
+
+  // set up interrupt for Pin A, B
+  //attachInterrupt(0, doEncoderA, CHANGE); 
+  //attachInterrupt(1, doEncoderB, CHANGE); 
+  
+}
+
+void loop() {
+  // put your main code here, to run repeatedly:
+find_next_q();
+find_next_alpha();
 }
 
 //===============
