@@ -40,6 +40,10 @@ float target_q[3][3] = {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
 //Motor control variables
 float alpha[3] = {0, 0, 0};
 
+unsigned long currTime, prevTime;
+volatile double elapTime;
+
+
 //ISR variables
 volatile float x_coor = 0;
 volatile float y_coor = 0;
@@ -48,7 +52,7 @@ volatile char tempChars[numChars];    // temporary array for use when parsing
 volatile char receivedChars[numChars]; 
 volatile boolean newData = false;
 int controlLoopRate = 95; //frequency in Hz
-
+/*
 //============= ISR Functions
 // Timer Setup: frequency needs to be larger than 1 HZ
 void setupTimer(int freq){
@@ -102,9 +106,23 @@ ISR(TIMER1_COMPA_vect) {
   //grab the current x and y position and push previous onto 
   //read check pyserial, update to new xy coordinate, push old to new array, compute PID
 }
+*/
   
 //============= PID Calculation function
 void PID() {
+  elapTime = (double)(currTime - prevTime);
+
+  double newError0 = -Pp[0];
+  double newError1 = -Pp[1];
+  
+  Error_dot[0] = (newError0 - Error[0]) / elapTime;
+  Error_dot[1] = (newError1 - Error[1]) / elapTime;
+
+  Error_sum[0] += newError0 * elapTime;
+  Error_sum[1] += newError0 * elapTime;
+
+  Error[0] = newError0 * elapTime;
+  Error[1] = newError1 * elapTime;
   
   target_angles[0] = -Kp[0]*Error[1]-Kd[0]*Error_dot[1]-Ki[0]*Error_sum[1];  //y distance error requires x axis rotation - "-" to counteract ball
   target_angles[1] = Kp[1]*Error[0]+Kd[1]*Error_dot[0]+Ki[1]*Error_sum[0];  //x distance error requires y axis rotation
@@ -135,14 +153,13 @@ void Transformation() {
   target_q[2][0] = T + pRod[1][0] * sin(target_angles[0]) - pRod[0][0] * cos(target_angles[0]) * sin(target_angles[1]);
   target_q[2][1] = T + pRod[1][1] * sin(target_angles[0]) - pRod[0][1] * cos(target_angles[0]) * sin(target_angles[1]);
   target_q[2][2] = T + pRod[1][2] * sin(target_angles[0]) - pRod[0][2] * cos(target_angles[0]) * sin(target_angles[1]);
+  
 }
 //============= Motor angle calculation functions
 
 void find_next_q() {
   Pp[0] = x_coor;
   Pp[1] = y_coor;
-  Error[0] = -Pp[0];
-  Error[1] = -Pp[1];
   PID(); //Write PID function
   Transformation();
 }
@@ -162,6 +179,9 @@ void find_next_alpha() {
   }
 
   
+  Serial.print(l[0][0]);
+
+  
   for (int i = 0; i <= 2; i= i+1) { //for loop to calculate alpha 1-3
     float l_norm = sqrt(l[0][i] * l[0][i] + l[1][i] * l[1][i] + l[2][i] * l[2][i]);
     float Li = l_norm * l_norm * - (S * S - A * A);
@@ -170,8 +190,15 @@ void find_next_alpha() {
     float zi = l[2][i];
     float Mi = 2 * A * zi;
     float Ni = 2 * A * cos(beta[i]) * xi + sin(beta[i]) * yi;
-    alpha[i] = asin(Li / sqrt(Mi * Mi + Ni * Ni) - atan2(Ni, Mi));
+    
+    alpha[i] = asin(Li / sqrt(Mi * Mi + Ni * Ni)); //- atan2(Ni, Mi));
+    Serial.println(Li / sqrt(Mi * Mi + Ni * Ni)-atan2(Ni, Mi));
   }
+  Serial.print(alpha[0]);
+  Serial.print(" ");
+  Serial.print(alpha[1]);
+  Serial.print(" ");
+  Serial.println(alpha[2]);
 }
 
 //============= Read and Parse data
@@ -217,13 +244,40 @@ void readParseData() {      // split the data into its parts NEEDS TO UPDATE
 
   strtokIndx = strtok(NULL, ","); // this continues where the previous call left off
   y_coor = atof(strtokIndx);     // convert this part to an float y_coor
+  
+  
 }
 
+void readData(){
+  // wait for input
+  while (!Serial.available()) {}
+  double startTime = millis();
+  // take input and turn it into two doubles
+  String strIn = Serial.readStringUntil('\n');
+  // last know position of ball
+  int comma_idx = indexOf(strIn, ',');
+  x_coor = strIn.substring(0,comma_idx).toDouble();
+  y_coor = strIn.substring(comma_idx+1, strIn.length()).toDouble();
+  Serial.print(x_coor);
+  Serial.print(" ");
+  Serial.println(y_coor);
+}
+int indexOf(String str, char c) {
+  int str_len = str.length() + 1; // +1 to account for null char
+  char chr_arr[str_len];
+  str.toCharArray(chr_arr, str_len);
+  int index = strchr(chr_arr,c)-chr_arr;
+  if (!index) {
+    return -1;
+  } else {
+    return index;
+  }
+}
 //============= setup and loop
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(BAUDRATE);
-  setupTimer(controlLoopRate);
+//  setupTimer(controlLoopRate);
   // pin mode for motors
 
 
@@ -234,9 +288,10 @@ void setup() {
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-find_next_q();
-find_next_alpha();
+  readData();
+  currTime = millis();
+  find_next_q();
+  find_next_alpha();
 }
 
 //===============
