@@ -23,15 +23,18 @@ of the platform
 #include <Servo.h>
 
 // macros
-#define KP 1.0
+#define KP 1.0      // should be <= 1.0 to not saturate servos
 #define KI 0.001
 #define KD 0.00001
 #define L  0.112  // length of rod (m)
 #define l  0.035  // length of servo horn (m)
-#define r  0.010  // radius of the platform (m)
+#define r  0.1129  // radius of the platform (m)
 #define mountAngle 120.0/180.0*PI                 // angle between mounts on platform (rad)
 #define maxServoAngle 50.0/180.0*PI               // max servo angle before servo horn will hit table or servo will reach max range (+/-)
 #define maxServoHornHeight l*sin(maxServoAngle)   // max (+/-) distance servo horn can move in z
+#define maxTableAngle atan(maxServoHornHeight/r)
+#define maxPlatLen 0.160
+#define tableRatio maxTableAngle/maxPlatLen
 
 // servo setup
 Servo servoA, servoB, servoC;
@@ -82,9 +85,18 @@ void loop() {
   double rateErrorX = (errorX - lastErrorX)/elapTime;    // derivate the rate error (for D term)
   double rateErrorY = (errorY - lastErrorY)/elapTime;
 
-  double theta = - KP*errorX;// + KI*cumuErrorX + KD*rateErrorX;      // use PID to calculate table theta angle
-  double phi = KP*errorY;// + KI*cumuErrorY + KD*rateErrorY;          // use PID to calculate table phi angle
-  Serial.println(String(theta)+" "+String(phi));
+  double theta = KP*errorX*tableRatio;// + KI*cumuErrorX + KD*rateErrorX;      // use PID to calculate table theta angle
+  double phi = -KP*errorY*tableRatio;// + KI*cumuErrorY + KD*rateErrorY;          // use PID to calculate table phi angle
+
+  // scale down angles if needed
+  double maxAng = max(abs(theta), abs(phi));
+  if (maxAng > maxTableAngle) {
+    double ratio = maxTableAngle / maxAng;
+    theta *= ratio;
+    phi *= ratio;
+  }
+
+  //Serial.println(String(theta)+" "+String(phi));
   // update errors and previous time
   lastErrorX = errorX;
   lastErrorY = errorY;
@@ -108,7 +120,6 @@ void loop() {
   // scale down z height if one of them exceeds maximum allowed
   double maxZ = max(max(abs(zA), abs(zB)), abs(zC));
   if (maxZ > maxServoHornHeight) {
-    Serial.println("mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmax");
     double ratio = maxServoHornHeight / maxZ;
     zA *= ratio;
     zB *= ratio;
@@ -123,9 +134,9 @@ void loop() {
   // ===== COMMAND SERVOS TO DESIRED ANLGES ===== //
 
   // print servo angles
-  Serial.println(alpha*180.0/PI+60,6);
-  Serial.println(beta*180.0/PI+60,6);
-  Serial.println(gamma*180.0/PI+60,6);
+  //Serial.println(alpha*180.0/PI+60,6);
+  //Serial.println(beta*180.0/PI+60,6);
+  //Serial.println(gamma*180.0/PI+60,6);
 
   // write servo angles
   servoA.write(alpha*180.0/PI+60);

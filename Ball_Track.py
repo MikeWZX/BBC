@@ -21,12 +21,14 @@ plat_len = np.array([0.160,0.120])   # x length (m), y length (m) <---Unknown
 def transform(obj):
     # scale
     obj_scaled = obj * plat_len/cam_len
-    # flip and translate
-    obj_ft = plat_len/2 - obj_scaled
+    # translate
+    obj_tra = obj_scaled - plat_len/2
+    # flip just y
+    obj_flip = np.array([obj_tra[0],-obj_tra[1]])
     # rotate
     angle = np.pi/6
     R = np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
-    obj_final = R @ obj_ft
+    obj_final = R @ obj_flip
     # return final transformed object
     return obj_final
 
@@ -40,23 +42,31 @@ while True:
     #grayFrame = cv.cvtColor(blurFrame, cv.COLOR_BGR2GRAY)
     grayFrame = blurFrame[:,:,1]
     
-    circles = cv.HoughCircles(grayFrame, cv.HOUGH_GRADIENT_ALT, 1.5, 30, param1 = 200, param2 = 0.85, minRadius = 30, maxRadius = 200)
+    circles = cv.HoughCircles(grayFrame, cv.HOUGH_GRADIENT_ALT, 1.5, 30, param1 = 200, param2 = 0.85, minRadius = 50, maxRadius = 80)
     #dp 1.0-1.4, minDist, param 1 = sensitivity, param 2 = accuracy
-
+    # chosen = None
+    # print(circles)
     if circles is not None:
-        circles = np.uint16(np.around(circles))
-        chosen = None
-        for i in circles[0,:]:
-            if chosen is None: chosen = i
-            #If prev circle exists, choose 
-            if prevCircle is not None:
-                if dist(chosen[0],chosen[1],prevCircle[0],prevCircle[1]) <= dist(i[0],i[1],prevCircle[0],prevCircle[1]):
-                    chosen = i
-
-        # cv.circle(Frame, (chosen[0],chosen[1]),1 ,(0,100,100), 3)
+        circles = np.uint16(np.around(circles))[0]
+        # print(circles)
+        circles = circles[:,:2] # strip circles to only x and y
+        if prevCircle is not None:
+            diff = (circles-prevCircle)**2
+            chosen = circles[np.argmin(diff[:,1]-diff[:,0])]
+        else:
+            chosen = circles[0]
+        # chosen = None
+        # for i in circles[0,:]:
+        #     if chosen is None: chosen = i
+        #     #If prev circle exists, choose 
+        #     if prevCircle is not None:
+        #         if dist(chosen[0],chosen[1],prevCircle[0],prevCircle[1]) <= dist(i[0],i[1],prevCircle[0],prevCircle[1]):
+        #             chosen = i
+        # print(chosen[2])
+        cv.circle(Frame, (chosen[0],chosen[1]),1 ,(0,100,100), 3)
         # cv.circle(Frame, (chosen[0],chosen[1]), chosen[2], (255,8,255), 3)
         
-        prevCircle = chosen
+        prevCircle = chosen  # prevCircle should just be 2 by 2
   
         ball_coords = transform(chosen[:2])
         #Write to arduino msg type "x_coordinate, y_coordinate" followed by new line
