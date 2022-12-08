@@ -10,7 +10,7 @@ prevCircle = None
 dist = lambda x1, y1, x2, y2: (x1-x2)**2 +(y1-y2)**2 #Function to calculate norm 2 dist
 
 #Connect to serial port
-ser = serial.Serial('COM3', 115200, timeout=1)
+ser = serial.Serial('COM3', 9600, timeout=1)
 maxtime = 0
 
 # frame dimensions
@@ -63,8 +63,8 @@ while True:
         #         if dist(chosen[0],chosen[1],prevCircle[0],prevCircle[1]) <= dist(i[0],i[1],prevCircle[0],prevCircle[1]):
         #             chosen = i
         # print(chosen[2])
-        cv.circle(Frame, (chosen[0],chosen[1]),1 ,(0,100,100), 3)
-        # cv.circle(Frame, (chosen[0],chosen[1]), chosen[2], (255,8,255), 3)
+        cv.circle(Frame, (chosen[0],chosen[1]),1 ,(255,8,255), 3)
+
         
         prevCircle = chosen  # prevCircle should just be 2 by 2
   

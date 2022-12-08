@@ -49,7 +49,7 @@ double setX, setY;                  // set position (target)
 
 void setup() {
   // open the serial port at 115200 bps
-  Serial.begin(115200);
+  Serial.begin(9600);
 
   // attach servos to pins
   servoA.attach(9);
@@ -85,7 +85,7 @@ void loop() {
   double rateErrorX = (errorX - lastErrorX)/elapTime;    // derivate the rate error (for D term)
   double rateErrorY = (errorY - lastErrorY)/elapTime;
 
-  double theta = KP*errorX*tableRatio;// + KI*cumuErrorX + KD*rateErrorX;      // use PID to calculate table theta angle
+  double theta = -KP*errorX*tableRatio;// + KI*cumuErrorX + KD*rateErrorX;      // use PID to calculate table theta angle
   double phi = -KP*errorY*tableRatio;// + KI*cumuErrorY + KD*rateErrorY;          // use PID to calculate table phi angle
 
   // scale down angles if needed
