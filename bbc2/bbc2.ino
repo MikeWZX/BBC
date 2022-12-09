@@ -23,10 +23,10 @@ of the platform
 #include <Servo.h>
 
 // macros
-#define KP 0.6      // 0.5, servos should saturate around 1.0
-#define KI 0.00 // was 0.001
-#define KD 0.0    // 0.0.01
-#define L  0.112    // length of rod (m)
+#define KP 0.25     // 0.12, servos should saturate around 1.0
+#define KI 0.0001 // was 0.001
+#define KD 0.05    // 0.6
+#define L  0.142    // length of rod (m)
 #define l  0.035    // length of servo horn (m)
 #define r  0.1129   // radius of the platform (m)
 #define mountAngle 120.0/180.0*PI                 // angle between mounts on platform (rad)
@@ -44,7 +44,9 @@ Servo servoA, servoB, servoC;
 // PID variables
 unsigned long currTime, prevTime;
 double lastErrorX, lastErrorY;
-double cumuErrorX, cumuErrorY;
+const int arrLen = 100;
+double cumuErrorArr[2][arrLen];
+int i = 0;
 
 // positions
 double setX, setY;                  // set position (target) (0.0)
@@ -60,6 +62,7 @@ void setup() {
 
   // home the servo
   home();
+  prevTime = millis();
 }
 
 void loop() {
@@ -67,7 +70,6 @@ void loop() {
   
   // wait for input
   while (!Serial.available()) {}  // blocks the execution before reading the values
-  double startTime = millis();
   // take input and turn it into two doubles
   String strIn = Serial.readStringUntil('\n');
   // last know position of ball
@@ -82,14 +84,23 @@ void loop() {
 
   double errorX = (posX - setX)*tableRatio;                           // set error to equal difference between current position and desired position (for P Term)
   double errorY = (posY - setY)*tableRatio;
-  cumuErrorX = max(-MAX_CUMU_ERR, min(cumuErrorX + errorX * elapTime, MAX_CUMU_ERR));                      // integrate the  cumulative error (for I term)
-  cumuErrorY = max(-MAX_CUMU_ERR, min(cumuErrorY + errorY * elapTime, MAX_CUMU_ERR));
+  cumuErrorArr[0][i] = errorX;
+  cumuErrorArr[1][i] = errorY;
+  i = (i+1)%arrLen;
+  double cumuErrorX, cumuErrorY;
+  for (int j = 0; j < arrLen; j++){
+    cumuErrorX += cumuErrorArr[0][j];
+    cumuErrorY += cumuErrorArr[1][j];
+  }
+  // elapTime = max(elapTime, 0.01);
+  // cumuErrorX = max(-MAX_CUMU_ERR, min(cumuErrorX + errorX * elapTime, MAX_CUMU_ERR));                      // integrate the  cumulative error (for I term)
+  // cumuErrorY = max(-MAX_CUMU_ERR, min(cumuErrorY + errorY * elapTime, MAX_CUMU_ERR));
   
   double rateErrorX = (errorX - lastErrorX)/elapTime;    // derivate the rate error (for D term)
   double rateErrorY = (errorY - lastErrorY)/elapTime;
 
-  double theta = -KP*errorX - KI*cumuErrorX - KD*rateErrorX;      // use PID to calculate table theta angle
-  double phi = -KP*errorY - KI*cumuErrorY - KD*rateErrorY;          // use PID to calculate table phi angle
+  double theta = -KP*errorX - KI*cumuErrorX/arrLen - KD*rateErrorX;      // use PID to calculate table theta angle
+  double phi = -KP*errorY - KI*cumuErrorY/arrLen - KD*rateErrorY;          // use PID to calculate table phi angle
 
   // scale down angles if needed
   double maxAng = max(abs(theta), abs(phi));
@@ -135,9 +146,9 @@ void loop() {
   // ===== COMMAND SERVOS TO DESIRED ANLGES ===== //
 
   // print servo angles
-  //Serial.println(alpha*180.0/PI+60,6);
-  //Serial.println(beta*180.0/PI+60,6);
-  //Serial.println(gamma*180.0/PI+60,6);
+  // Serial.println(alpha,6);
+  // Serial.println(beta,6);
+  // Serial.println(gamma,6);
 
   // write servo angles
   servoA.write(angToServoCmd(alpha));
@@ -149,11 +160,37 @@ void loop() {
 
 // move servos to middle position
 double home() {
-  int middle = 60;        // center position of servos
+  // center position of servos
+  int pause = 500;
+  int middle = 60;        
   servoA.write(middle);
   servoB.write(middle);
   servoC.write(middle);
-  delay(5000);            // pause for 5 seconds
+  memset(*cumuErrorArr, 0, 2*arrLen);
+
+  double a1 = 0.8;
+  double a2 = -0.3;
+  double a3 = 0.0;
+  double a4 = -0.6;
+
+  double start[3][4] = {
+    {a1,-a1,a3,a3},
+    {a2,-a2,a4,-a4},
+    {a2,-a2,-a4,a4}
+    };
+
+  for (int q = 0; q < 4; q= q + 1) {
+  delay(pause);
+  servoA.write(angToServoCmd(start[0][q]));
+  servoB.write(angToServoCmd(start[1][q]));
+  servoC.write(angToServoCmd(start[2][q]));
+  
+  delay(pause);
+  servoA.write(middle);
+  servoB.write(middle);
+  servoC.write(middle);
+  }
+  delay(2000);
 }
 
 // find the first index of a character within a string
@@ -166,5 +203,5 @@ int indexOf(String str, char c) {
 }
 
 double angToServoCmd (double angle) {
-  return angle*180.0/PI+60;
+  return int(angle*180.0/PI+60.0);
 }
