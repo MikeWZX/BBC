@@ -23,18 +23,20 @@ of the platform
 #include <Servo.h>
 
 // macros
-#define KP 1.0      // should be <= 1.0 to not saturate servos
-#define KI 0.001
-#define KD 0.00001
-#define L  0.112  // length of rod (m)
-#define l  0.035  // length of servo horn (m)
-#define r  0.1129  // radius of the platform (m)
+#define KP 0.6      // 0.5, servos should saturate around 1.0
+#define KI 0.00 // was 0.001
+#define KD 0.0    // 0.0.01
+#define L  0.112    // length of rod (m)
+#define l  0.035    // length of servo horn (m)
+#define r  0.1129   // radius of the platform (m)
 #define mountAngle 120.0/180.0*PI                 // angle between mounts on platform (rad)
 #define maxServoAngle 50.0/180.0*PI               // max servo angle before servo horn will hit table or servo will reach max range (+/-)
 #define maxServoHornHeight l*sin(maxServoAngle)   // max (+/-) distance servo horn can move in z
 #define maxTableAngle atan(maxServoHornHeight/r)
 #define maxPlatLen 0.160
 #define tableRatio maxTableAngle/maxPlatLen
+#define max_cumu_error_deg 5.0 // was 0.57
+#define MAX_CUMU_ERR max_cumu_error_deg*PI/180.0/KI
 
 // servo setup
 Servo servoA, servoB, servoC;
@@ -45,10 +47,10 @@ double lastErrorX, lastErrorY;
 double cumuErrorX, cumuErrorY;
 
 // positions
-double setX, setY;                  // set position (target)
+double setX, setY;                  // set position (target) (0.0)
 
 void setup() {
-  // open the serial port at 115200 bps
+  // open the serial port at 9600 bps
   Serial.begin(9600);
 
   // attach servos to pins
@@ -78,15 +80,16 @@ void loop() {
   currTime = millis();                                   // get current time (of position reading) from clock
   double elapTime = (double)(currTime - prevTime);       // measure time since last position reading
 
-  double errorX = posX - setX;                           // set error to equal difference between current position and desired position (for P Term)
-  double errorY = posY - setY;
-  cumuErrorX += errorX * elapTime;                       // integrate the  cumulative error (for I term)
-  cumuErrorY += errorY * elapTime;
+  double errorX = (posX - setX)*tableRatio;                           // set error to equal difference between current position and desired position (for P Term)
+  double errorY = (posY - setY)*tableRatio;
+  cumuErrorX = max(-MAX_CUMU_ERR, min(cumuErrorX + errorX * elapTime, MAX_CUMU_ERR));                      // integrate the  cumulative error (for I term)
+  cumuErrorY = max(-MAX_CUMU_ERR, min(cumuErrorY + errorY * elapTime, MAX_CUMU_ERR));
+  
   double rateErrorX = (errorX - lastErrorX)/elapTime;    // derivate the rate error (for D term)
   double rateErrorY = (errorY - lastErrorY)/elapTime;
 
-  double theta = -KP*errorX*tableRatio;// + KI*cumuErrorX + KD*rateErrorX;      // use PID to calculate table theta angle
-  double phi = -KP*errorY*tableRatio;// + KI*cumuErrorY + KD*rateErrorY;          // use PID to calculate table phi angle
+  double theta = -KP*errorX - KI*cumuErrorX - KD*rateErrorX;      // use PID to calculate table theta angle
+  double phi = -KP*errorY - KI*cumuErrorY - KD*rateErrorY;          // use PID to calculate table phi angle
 
   // scale down angles if needed
   double maxAng = max(abs(theta), abs(phi));
@@ -96,7 +99,6 @@ void loop() {
     phi *= ratio;
   }
 
-  //Serial.println(String(theta)+" "+String(phi));
   // update errors and previous time
   lastErrorX = errorX;
   lastErrorY = errorY;
@@ -125,7 +127,6 @@ void loop() {
     zB *= ratio;
     zC *= ratio;
   }
-
   // calculate servo angles from desired z heights
   double alpha = asin(zA/l);
   double beta = asin(zB/l);
@@ -139,9 +140,9 @@ void loop() {
   //Serial.println(gamma*180.0/PI+60,6);
 
   // write servo angles
-  servoA.write(alpha*180.0/PI+60);
-  servoB.write(beta*180.0/PI+60);
-  servoC.write(gamma*180.0/PI+60);
+  servoA.write(angToServoCmd(alpha));
+  servoB.write(angToServoCmd(beta));
+  servoC.write(angToServoCmd(gamma));
 }
 
 // ===== FUNCTIONS ===== //
@@ -162,4 +163,8 @@ int indexOf(String str, char c) {
   str.toCharArray(chr_arr, str_len);
   int index = strchr(chr_arr,c)-chr_arr;
   return !index ? -1 : index;
+}
+
+double angToServoCmd (double angle) {
+  return angle*180.0/PI+60;
 }
