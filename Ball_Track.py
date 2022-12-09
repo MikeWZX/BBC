@@ -39,8 +39,8 @@ while True:
     if not ret: break
     
     blurFrame = cv.GaussianBlur(Frame, (17,17), 0)
-    #grayFrame = cv.cvtColor(blurFrame, cv.COLOR_BGR2GRAY)
-    grayFrame = blurFrame[:,:,1]
+    grayFrame = cv.cvtColor(blurFrame, cv.COLOR_BGR2GRAY)
+    #grayFrame = blurFrame[:,:,1]
     
     circles = cv.HoughCircles(grayFrame, cv.HOUGH_GRADIENT_ALT, 1.5, 30, param1 = 200, param2 = 0.85, minRadius = 40, maxRadius = 100)
     #dp 1.0-1.4, minDist, param 1 = sensitivity, param 2 = accuracy

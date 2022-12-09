@@ -23,9 +23,9 @@ of the platform
 #include <Servo.h>
 
 // macros
-#define KP 0.25     // 0.12, servos should saturate around 1.0
-#define KI 0.0001 // was 0.001
-#define KD 0.05    // 0.6
+#define KP 0.16     // 0.12, servos should saturate around 1.0
+#define KI 0.0013 // was 0.001
+#define KD 0.065    // 0.6
 #define L  0.142    // length of rod (m)
 #define l  0.035    // length of servo horn (m)
 #define r  0.1129   // radius of the platform (m)
@@ -35,7 +35,7 @@ of the platform
 #define maxTableAngle atan(maxServoHornHeight/r)
 #define maxPlatLen 0.160
 #define tableRatio maxTableAngle/maxPlatLen
-#define max_cumu_error_deg 5.0 // was 0.57
+#define max_cumu_error_deg 5.0 
 #define MAX_CUMU_ERR max_cumu_error_deg*PI/180.0/KI
 
 // servo setup
@@ -87,10 +87,11 @@ void loop() {
   cumuErrorArr[0][i] = errorX;
   cumuErrorArr[1][i] = errorY;
   i = (i+1)%arrLen;
-  double cumuErrorX, cumuErrorY;
+  double cumuErrorX=0, cumuErrorY=0;
   for (int j = 0; j < arrLen; j++){
     cumuErrorX += cumuErrorArr[0][j];
     cumuErrorY += cumuErrorArr[1][j];
+    // Serial.println(cumuErrorY);
   }
   // elapTime = max(elapTime, 0.01);
   // cumuErrorX = max(-MAX_CUMU_ERR, min(cumuErrorX + errorX * elapTime, MAX_CUMU_ERR));                      // integrate the  cumulative error (for I term)
@@ -101,10 +102,14 @@ void loop() {
 
   double theta = -KP*errorX - KI*cumuErrorX/arrLen - KD*rateErrorX;      // use PID to calculate table theta angle
   double phi = -KP*errorY - KI*cumuErrorY/arrLen - KD*rateErrorY;          // use PID to calculate table phi angle
-
+  // Serial.println(cumuErrorX, 6);
+  // Serial.println(cumuErrorY,6);
+  // Serial.println(KP*errorX+KD*rateErrorX,6);
   // scale down angles if needed
   double maxAng = max(abs(theta), abs(phi));
-  if (maxAng > maxTableAngle) {
+  // Serial.println(abs(theta));
+  if (maxAng > maxTableAngle && maxAng != 0.0) {
+    // Serial.println("MAXXXXXX");
     double ratio = maxTableAngle / maxAng;
     theta *= ratio;
     phi *= ratio;
@@ -146,9 +151,9 @@ void loop() {
   // ===== COMMAND SERVOS TO DESIRED ANLGES ===== //
 
   // print servo angles
-  // Serial.println(alpha,6);
-  // Serial.println(beta,6);
-  // Serial.println(gamma,6);
+  // Serial.println(zA/l,6);
+  // Serial.println(zB/l,6);
+  // Serial.println(zC/l,6);
 
   // write servo angles
   servoA.write(angToServoCmd(alpha));
@@ -166,7 +171,7 @@ double home() {
   servoA.write(middle);
   servoB.write(middle);
   servoC.write(middle);
-  memset(*cumuErrorArr, 0, 2*arrLen);
+  
 
   double a1 = 0.8;
   double a2 = -0.3;
@@ -180,17 +185,19 @@ double home() {
     };
 
   for (int q = 0; q < 4; q= q + 1) {
-  delay(pause);
-  servoA.write(angToServoCmd(start[0][q]));
-  servoB.write(angToServoCmd(start[1][q]));
-  servoC.write(angToServoCmd(start[2][q]));
-  
-  delay(pause);
-  servoA.write(middle);
-  servoB.write(middle);
-  servoC.write(middle);
+    delay(pause);
+    servoA.write(angToServoCmd(start[0][q]));
+    servoB.write(angToServoCmd(start[1][q]));
+    servoC.write(angToServoCmd(start[2][q]));
+    
+    delay(pause);
+    servoA.write(middle);
+    servoB.write(middle);
+    servoC.write(middle);
   }
   delay(2000);
+
+  memset(*cumuErrorArr, 0, 2*arrLen);
 }
 
 // find the first index of a character within a string
